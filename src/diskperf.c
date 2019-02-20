@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <fcntl.h>
+#include <unistd.h>
 #include <sys/time.h>
 
 #define MAX_BYTES_PER_WRITE 1024 * 1024 // 1MB
