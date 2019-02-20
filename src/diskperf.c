@@ -9,7 +9,24 @@
 #include <unistd.h>
 #include <sys/time.h>
 
-#define MAX_BYTES_PER_WRITE 1024 * 1024 // 1MB
+/*
+ * Metrics to benchmark: BPS IOPS
+ * Settings: Sequential/Random, Read/Write, Different IO Size, fsync() Mode, Operation Type
+ */
+
+#define MAX_BYTES_PER_OP (16 * 1024 * 1024) /* 16MiB */
+#define FILL_FILE_BATCH (64)
+#define FILL_FILE_SIZE (FILL_FILE_BATCH * MAX_BYTES_PER_OP)
+
+enum op_type {
+    OP_READ = 0,
+    OP_WRITE,
+};
+
+enum access_mode {
+    ACCESS_SEQ = 0,
+    ACCESS_RANDOM,
+};
 
 enum fsync_mode {
     FSYNC_NONE = 0,
@@ -17,63 +34,174 @@ enum fsync_mode {
 };
 
 struct options {
-    size_t write_size;
-    size_t write_total;
+    size_t op_size;
+    size_t op_num;
+    enum op_type op_type;
     enum fsync_mode fsync_mode;
+    enum access_mode access_mode;
 };
 
 enum option_type {
-    OPT_WRITE_SIZE = 256,
-    OPT_WRITE_TOTAL,
+    OPT_OP_SIZE = 256,
+    OPT_OP_NUM,
+    OPT_WRITE,
+    OPT_RANDOM,
     OPT_FSYNC_EACH,
 };
 
-void run_append_test(struct options *opts)
-{
-    printf("file append test:\n"
-           "%zu bytes per write\n"
-           "%zu bytes total\n"
-           "fsync mode %d\n",
-           opts->write_size, opts->write_total, opts->fsync_mode);
+struct context {
+    int fd;
+    char buffer[MAX_BYTES_PER_OP];
+    struct timeval begin;
+    struct timeval end;
+};
 
-    int fd = open("diskperf.out", O_CREAT | O_TRUNC | O_WRONLY | O_APPEND, 0660);
-    if (fd == -1) {
-        fprintf(stderr, "open file diskperf.out failed (errno=%d)", (int)errno);
+const char *op_type_str(enum op_type t)
+{
+    switch (t) {
+    case OP_READ: return "READ";
+    case OP_WRITE: return "WRITE";
+    default:
+        abort();
+    }
+}
+
+const char *access_mode_str(enum access_mode m)
+{
+    switch (m) {
+    case ACCESS_SEQ: return "SEQ";
+    case ACCESS_RANDOM: return "RANDOM";
+    default:
+        abort();
+    }
+}
+
+const char *fsync_mode_str(enum fsync_mode m)
+{
+    switch (m) {
+    case FSYNC_NONE: return "NONE";
+    case FSYNC_EACH: return "EACH";
+    default:
+        abort();
+    }
+}
+
+void setup(struct context *ctx, struct options *opts)
+{
+    /*
+     * Initialize buffer for both READ and WRITE test.
+     * In READ test, buffer is used when creating file;
+     * in WRITE test, buffer is used to writing to file.
+     */
+    memset(ctx->buffer, 0xEF, sizeof(ctx->buffer));
+    
+    /* Open file */
+    int oflag = O_CREAT | O_TRUNC | O_RDWR;
+    if (opts->op_type == OP_WRITE && opts->access_mode == ACCESS_SEQ) {
+        oflag |= O_APPEND;
+    }
+    const char *filename = "diskperf.data";
+    ctx->fd = open(filename, oflag, 0600);
+    if (ctx->fd == -1) {
+        fprintf(stderr, "open file %s failed (err=%s)\n",
+                filename, strerror(errno));
         exit(1);
     }
 
-    static char data[MAX_BYTES_PER_WRITE];
-    memset(data, 0xFE, sizeof(data));
+    /* Filling file content */
+    if (opts->op_type == OP_WRITE && opts->access_mode == ACCESS_SEQ) {
+        /* Append only write test does not need filling file. */
+    } else {
+        size_t i = 0;
+        for (; i < FILL_FILE_BATCH; ++i) {
+            ssize_t written = write(ctx->fd, ctx->buffer, sizeof(ctx->buffer));
+            if (written == -1) {
+                fprintf(stderr, "write to file %s failed (err=%s)\n",
+                        filename, strerror(errno));
+                exit(1);
+            }
+        }
+    }
 
-    size_t write_num = (opts->write_total + opts->write_size - 1) / opts->write_size;
+    if (opts->access_mode == ACCESS_RANDOM) {
+        srand(time(NULL));
+    }
+}
 
-    struct timeval begin;
-    gettimeofday(&begin, NULL);
-    printf("begin time: %u.%u\n", (unsigned)begin.tv_sec, (unsigned)begin.tv_usec);
+void run_benchmark(struct context *ctx, struct options *opts)
+{
+    gettimeofday(&ctx->begin, NULL);
 
-    for (size_t i = 0; i < write_num; ++i) {
-        ssize_t written = write(fd, data, opts->write_size);
-        if (written == -1) {
-            fprintf(stderr, "write() failed (err=%s)\n", strerror(errno));
+    size_t i = 0;
+    for (; i < opts->op_num; ++i) {
+        /* Seek file if in random mode if needed */
+        if (opts->access_mode == ACCESS_RANDOM) {
+            size_t pos = rand() % (FILL_FILE_SIZE - opts->op_size);
+            off_t offset = lseek(ctx->fd, pos, SEEK_SET);
+            if (offset == (off_t)-1) {
+                fprintf(stderr, "lseek() failed (err=%s)\n", strerror(errno));
+                exit(1);
+            }
+        }
+
+        /* read or write */
+        ssize_t nbytes = 0;
+        if (opts->op_type == OP_READ) {
+            nbytes = read(ctx->fd, ctx->buffer, opts->op_size);
+        } else {
+            nbytes = write(ctx->fd, ctx->buffer, opts->op_size);
+        }
+        if (nbytes == -1) {
+            fprintf(stderr, "write()/read() failed (err=%s)\n", strerror(errno));
             exit(1);
         }
 
         if (opts->fsync_mode == FSYNC_EACH) {
-            fsync(fd);
+            fsync(ctx->fd);
         }
     }
 
-    struct timeval end;
-    gettimeofday(&end, NULL);
-    printf("end time: %u.%u\n", (unsigned)end.tv_sec, (unsigned)end.tv_usec);
+    gettimeofday(&ctx->end, NULL);
+}
 
-    close(fd);
+void report(struct context *ctx, struct options *opts)
+{
+    unsigned elapsed = (ctx->end.tv_sec - ctx->begin.tv_sec) * 1000000 +
+        ((int)ctx->end.tv_usec - (int)ctx->begin.tv_usec);
 
-    unsigned elapsed = (end.tv_sec - begin.tv_sec) * 1000000 +
-        ((int)end.tv_usec - (int)begin.tv_usec);
+    size_t total_size = opts->op_size * opts->op_num;
+    size_t bps = total_size * 1000000 / elapsed;
+    size_t iops = opts->op_num * 1000000 / elapsed;
 
-    printf("elapsed time: %uus throughput: %zu bytes/second\n",
-           elapsed, opts->write_size * write_num * 1000000 / elapsed);
+    printf("bps: %zu iops: %zu\n", bps, iops);
+}
+
+void teardown(struct context *ctx)
+{
+    close(ctx->fd);
+}
+
+void run_append_test(struct options *opts)
+{
+    /* Print parameters */
+    printf("op %s size %zu num %zu access %s fsync %s\n",
+           op_type_str(opts->op_type),
+           opts->op_size, opts->op_num,
+           access_mode_str(opts->access_mode),
+           fsync_mode_str(opts->fsync_mode));
+
+    /* Setup context */
+    static struct context ctx;
+    setup(&ctx, opts);
+    
+    /* Run benchmark */
+    run_benchmark(&ctx, opts);
+
+    /* Report results */
+    report(&ctx, opts);
+    
+    /* Teardown context */
+    teardown(&ctx);
 }
 
 bool parse_size_t(const char *arg, size_t *rslt)
@@ -94,13 +222,17 @@ bool parse_size_t(const char *arg, size_t *rslt)
 int main(int argc, char *argv[])
 {
     struct options options;
-    options.write_size = 4096;
-    options.write_total = 1024 * 1024 * 1024; // 1GB
+    options.op_size = 4096;
+    options.op_num = 128 * 1024;
+    options.op_type = OP_READ;
+    options.access_mode = ACCESS_SEQ;
     options.fsync_mode = FSYNC_NONE;
 
     static struct option longopts[] = {
-        {"write-size", required_argument, NULL, OPT_WRITE_SIZE},
-        {"write-total", required_argument, NULL, OPT_WRITE_TOTAL},
+        {"op-size", required_argument, NULL, OPT_OP_SIZE},
+        {"op-num", required_argument, NULL, OPT_OP_NUM},
+        {"write", no_argument, NULL, OPT_WRITE},
+        {"random", no_argument, NULL, OPT_RANDOM},
         {"fsync-each", no_argument, NULL, OPT_FSYNC_EACH},
     };
 
@@ -108,19 +240,25 @@ int main(int argc, char *argv[])
     bool ok = false;
     while ((ch = getopt_long(argc, argv, "", longopts, NULL)) != -1) {
         switch (ch) {
-        case OPT_WRITE_SIZE:
-            ok = parse_size_t(optarg, &options.write_size);
+        case OPT_OP_SIZE:
+            ok = parse_size_t(optarg, &options.op_size);
             if (!ok) {
-                fprintf(stderr, "error: invalid argument to --write-size\n");
+                fprintf(stderr, "error: invalid argument to --op-size\n");
                 return 1;
             }
             break;
-        case OPT_WRITE_TOTAL:
-            ok = parse_size_t(optarg, &options.write_total);
+        case OPT_OP_NUM:
+            ok = parse_size_t(optarg, &options.op_num);
             if (!ok) {
-                fprintf(stderr, "error: invalid argument to --write-total\n");
+                fprintf(stderr, "error: invalid argument to --op-num\n");
                 return 1;
             }
+            break;
+        case OPT_WRITE:
+            options.op_type = OP_WRITE;
+            break;
+        case OPT_RANDOM:
+            options.access_mode = ACCESS_RANDOM;
             break;
         case OPT_FSYNC_EACH:
             options.fsync_mode = FSYNC_EACH;
@@ -132,9 +270,9 @@ int main(int argc, char *argv[])
     }
 
     /* Extra option check */
-    if (options.write_size == 0 ||
-        options.write_size > MAX_BYTES_PER_WRITE) {
-        fprintf(stderr, "error: invalid write size (%zu)\n", options.write_size);
+    if (options.op_size == 0 ||
+        options.op_size > MAX_BYTES_PER_OP) {
+        fprintf(stderr, "error: invalid argument to --op-size (%zu)\n", options.op_size);
         return 1;
     }
 
