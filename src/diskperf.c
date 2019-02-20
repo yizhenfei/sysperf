@@ -40,6 +40,7 @@ struct options {
     enum fsync_mode fsync_mode;
     enum access_mode access_mode;
     const char *filename;
+    size_t align;
 };
 
 enum option_type {
@@ -49,6 +50,7 @@ enum option_type {
     OPT_RANDOM,
     OPT_FSYNC_EACH,
     OPT_FILE,
+    OPT_ALIGN,
 };
 
 struct context {
@@ -127,6 +129,12 @@ void setup(struct context *ctx, struct options *opts)
                     opts->op_size, ctx->file_size);
             exit(1);
         }
+
+        if (ctx->file_size < opts->align) {
+            fprintf(stderr, "alignment(%zu) is greater than file size(%zu)\n",
+                    opts->align, ctx->file_size);
+            exit(1);
+        }
     }
 
     if (opts->access_mode == ACCESS_RANDOM) {
@@ -143,6 +151,7 @@ void run_benchmark(struct context *ctx, struct options *opts)
         /* Seek file if in random mode if needed */
         if (opts->access_mode == ACCESS_RANDOM) {
             size_t pos = rand() % (ctx->file_size - opts->op_size + 1);
+            pos = pos - (pos % opts->align);
             off_t offset = lseek(ctx->fd, pos, SEEK_SET);
             if (offset == (off_t)-1) {
                 fprintf(stderr, "lseek() failed (err=%s)\n", strerror(errno));
@@ -234,6 +243,7 @@ int main(int argc, char *argv[])
     options.access_mode = ACCESS_SEQ;
     options.fsync_mode = FSYNC_NONE;
     options.filename = strdup("diskperf.data");
+    options.align = 1;
 
     static struct option longopts[] = {
         {"op-size", required_argument, NULL, OPT_OP_SIZE},
@@ -242,6 +252,7 @@ int main(int argc, char *argv[])
         {"random", no_argument, NULL, OPT_RANDOM},
         {"fsync-each", no_argument, NULL, OPT_FSYNC_EACH},
         {"file", required_argument, NULL, OPT_FILE},
+        {"align", required_argument, NULL, OPT_ALIGN},
     };
 
     int ch = 0;
@@ -259,6 +270,13 @@ int main(int argc, char *argv[])
             ok = parse_size_t(optarg, &options.op_num);
             if (!ok) {
                 fprintf(stderr, "error: invalid argument to --op-num\n");
+                return 1;
+            }
+            break;
+        case OPT_ALIGN:
+            ok = parse_size_t(optarg, &options.align);
+            if (!ok || options.align == 0) {
+                fprintf(stderr, "error: invalid argument to --align\n");
                 return 1;
             }
             break;
