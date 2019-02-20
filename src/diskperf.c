@@ -142,7 +142,7 @@ void setup(struct context *ctx, struct options *opts)
     }
 }
 
-void run_benchmark(struct context *ctx, struct options *opts)
+void do_io(struct context *ctx, struct options *opts)
 {
     gettimeofday(&ctx->begin, NULL);
 
@@ -196,7 +196,7 @@ void teardown(struct context *ctx)
     close(ctx->fd);
 }
 
-void run_append_test(struct options *opts)
+void run_benchmark(struct options *opts)
 {
     /* Print parameters */
     printf("op %s size %zu num %zu access %s fsync %s\n",
@@ -209,8 +209,8 @@ void run_append_test(struct options *opts)
     static struct context ctx;
     setup(&ctx, opts);
     
-    /* Run benchmark */
-    run_benchmark(&ctx, opts);
+    /* Execute IO operations */
+    do_io(&ctx, opts);
 
     /* Report results */
     report(&ctx, opts);
@@ -306,8 +306,8 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    /* Run test */
-    run_append_test(&options);
+    /* Run benchmark */
+    run_benchmark(&options);
 
     /* Free option */
     free((void *)options.filename);
