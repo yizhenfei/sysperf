@@ -8,6 +8,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/time.h>
+#include <sys/stat.h>
 
 /*
  * Metrics to benchmark: BPS IOPS
@@ -15,8 +16,6 @@
  */
 
 #define MAX_BYTES_PER_OP (16 * 1024 * 1024) /* 16MiB */
-#define FILL_FILE_BATCH (64)
-#define FILL_FILE_SIZE (FILL_FILE_BATCH * MAX_BYTES_PER_OP)
 
 enum op_type {
     OP_READ = 0,
@@ -39,6 +38,7 @@ struct options {
     enum op_type op_type;
     enum fsync_mode fsync_mode;
     enum access_mode access_mode;
+    const char *filename;
 };
 
 enum option_type {
@@ -47,10 +47,12 @@ enum option_type {
     OPT_WRITE,
     OPT_RANDOM,
     OPT_FSYNC_EACH,
+    OPT_FILE,
 };
 
 struct context {
     int fd;
+    size_t file_size;
     char buffer[MAX_BYTES_PER_OP];
     struct timeval begin;
     struct timeval end;
@@ -96,30 +98,33 @@ void setup(struct context *ctx, struct options *opts)
     memset(ctx->buffer, 0xEF, sizeof(ctx->buffer));
     
     /* Open file */
-    int oflag = O_CREAT | O_TRUNC | O_RDWR;
+    int oflag = O_CREAT | O_RDWR;
     if (opts->op_type == OP_WRITE && opts->access_mode == ACCESS_SEQ) {
-        oflag |= O_APPEND;
+        oflag |= (O_APPEND | O_TRUNC);
     }
-    const char *filename = "diskperf.data";
-    ctx->fd = open(filename, oflag, 0600);
+    ctx->fd = open(opts->filename, oflag, 0600);
     if (ctx->fd == -1) {
         fprintf(stderr, "open file %s failed (err=%s)\n",
-                filename, strerror(errno));
+                opts->filename, strerror(errno));
         exit(1);
     }
 
-    /* Filling file content */
+    /* Get file size */
     if (opts->op_type == OP_WRITE && opts->access_mode == ACCESS_SEQ) {
-        /* Append only write test does not need filling file. */
+        ctx->file_size = 0;
     } else {
-        size_t i = 0;
-        for (; i < FILL_FILE_BATCH; ++i) {
-            ssize_t written = write(ctx->fd, ctx->buffer, sizeof(ctx->buffer));
-            if (written == -1) {
-                fprintf(stderr, "write to file %s failed (err=%s)\n",
-                        filename, strerror(errno));
-                exit(1);
-            }
+        struct stat st;
+        int err = fstat(ctx->fd, &st);
+        if (err == -1) {
+            fprintf(stderr, "fstat() failed (err=%s)\n", strerror(errno));
+            exit(1);
+        }
+        ctx->file_size = st.st_size;
+
+        if (ctx->file_size < opts->op_size) {
+            fprintf(stderr, "op size(%zu) is greater than file size(%zu)\n",
+                    opts->op_size, ctx->file_size);
+            exit(1);
         }
     }
 
@@ -136,7 +141,7 @@ void run_benchmark(struct context *ctx, struct options *opts)
     for (; i < opts->op_num; ++i) {
         /* Seek file if in random mode if needed */
         if (opts->access_mode == ACCESS_RANDOM) {
-            size_t pos = rand() % (FILL_FILE_SIZE - opts->op_size);
+            size_t pos = rand() % (ctx->file_size - opts->op_size + 1);
             off_t offset = lseek(ctx->fd, pos, SEEK_SET);
             if (offset == (off_t)-1) {
                 fprintf(stderr, "lseek() failed (err=%s)\n", strerror(errno));
@@ -227,6 +232,7 @@ int main(int argc, char *argv[])
     options.op_type = OP_READ;
     options.access_mode = ACCESS_SEQ;
     options.fsync_mode = FSYNC_NONE;
+    options.filename = strdup("diskperf.data");
 
     static struct option longopts[] = {
         {"op-size", required_argument, NULL, OPT_OP_SIZE},
@@ -234,6 +240,7 @@ int main(int argc, char *argv[])
         {"write", no_argument, NULL, OPT_WRITE},
         {"random", no_argument, NULL, OPT_RANDOM},
         {"fsync-each", no_argument, NULL, OPT_FSYNC_EACH},
+        {"file", required_argument, NULL, OPT_FILE},
     };
 
     int ch = 0;
@@ -253,6 +260,10 @@ int main(int argc, char *argv[])
                 fprintf(stderr, "error: invalid argument to --op-num\n");
                 return 1;
             }
+            break;
+        case OPT_FILE:
+            free((void *)options.filename);
+            options.filename = strdup(optarg);
             break;
         case OPT_WRITE:
             options.op_type = OP_WRITE;
@@ -278,6 +289,9 @@ int main(int argc, char *argv[])
 
     /* Run test */
     run_append_test(&options);
+
+    /* Free option */
+    free((void *)options.filename);
 
     return 0;
 }
