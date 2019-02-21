@@ -1,2 +1,6 @@
 - [X] Error handling with unrecognized options.
+- [X] Rename option --fsync-each to --fsync
+- [ ] Support O_SYNC in fileperf
+- [ ] Support O_DIRECT in fileperf
 - [ ] Improve the distribution of random access.
+- [ ] Initial version of diskperf

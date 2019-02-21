@@ -28,16 +28,11 @@ enum access_mode {
     ACCESS_RANDOM,
 };
 
-enum fsync_mode {
-    FSYNC_NONE = 0,
-    FSYNC_EACH,
-};
-
 struct options {
     size_t op_size;
     size_t op_num;
     enum op_type op_type;
-    enum fsync_mode fsync_mode;
+    bool fsync;
     enum access_mode access_mode;
     const char *filename;
     size_t align;
@@ -48,7 +43,7 @@ enum option_type {
     OPT_OP_NUM,
     OPT_WRITE,
     OPT_RANDOM,
-    OPT_FSYNC_EACH,
+    OPT_FSYNC,
     OPT_FILE,
     OPT_ALIGN,
 };
@@ -81,13 +76,12 @@ const char *access_mode_str(enum access_mode m)
     }
 }
 
-const char *fsync_mode_str(enum fsync_mode m)
+const char *switch_str(bool v)
 {
-    switch (m) {
-    case FSYNC_NONE: return "NONE";
-    case FSYNC_EACH: return "EACH";
-    default:
-        abort();
+    if (v) {
+        return "ON";
+    } else {
+        return "OFF";
     }
 }
 
@@ -171,7 +165,7 @@ void do_io(struct context *ctx, struct options *opts)
             exit(1);
         }
 
-        if (opts->fsync_mode == FSYNC_EACH) {
+        if (opts->fsync) {
             fsync(ctx->fd);
         }
     }
@@ -188,7 +182,7 @@ void report(struct context *ctx, struct options *opts)
     size_t bps = total_size * 1000000 / elapsed;
     size_t iops = opts->op_num * 1000000 / elapsed;
 
-    printf("bps: %zu iops: %zu\n", bps, iops);
+    printf("BPS: %zu IOPS: %zu\n", bps, iops);
 }
 
 void teardown(struct context *ctx)
@@ -199,11 +193,11 @@ void teardown(struct context *ctx)
 void run_benchmark(struct options *opts)
 {
     /* Print parameters */
-    printf("op %s size %zu num %zu access %s fsync %s\n",
+    printf("OP: %s SIZE: %zu NUM: %zu ACCESS: %s FSYNC: %s\n",
            op_type_str(opts->op_type),
            opts->op_size, opts->op_num,
            access_mode_str(opts->access_mode),
-           fsync_mode_str(opts->fsync_mode));
+           switch_str(opts->fsync));
 
     /* Setup context */
     static struct context ctx;
@@ -241,7 +235,7 @@ int main(int argc, char *argv[])
     options.op_num = 128 * 1024;
     options.op_type = OP_READ;
     options.access_mode = ACCESS_SEQ;
-    options.fsync_mode = FSYNC_NONE;
+    options.fsync = false;
     options.filename = strdup("diskperf.data");
     options.align = 1;
 
@@ -250,7 +244,7 @@ int main(int argc, char *argv[])
         {"op-num", required_argument, NULL, OPT_OP_NUM},
         {"write", no_argument, NULL, OPT_WRITE},
         {"random", no_argument, NULL, OPT_RANDOM},
-        {"fsync-each", no_argument, NULL, OPT_FSYNC_EACH},
+        {"fsync", no_argument, NULL, OPT_FSYNC},
         {"file", required_argument, NULL, OPT_FILE},
         {"align", required_argument, NULL, OPT_ALIGN},
     };
@@ -290,8 +284,8 @@ int main(int argc, char *argv[])
         case OPT_RANDOM:
             options.access_mode = ACCESS_RANDOM;
             break;
-        case OPT_FSYNC_EACH:
-            options.fsync_mode = FSYNC_EACH;
+        case OPT_FSYNC:
+            options.fsync = true;
             break;
         case '?':
             exit(1);
