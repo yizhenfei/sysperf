@@ -36,6 +36,7 @@ struct options {
     enum op_type op_type;
     bool fsync;
     bool sync;
+    bool direct;
     enum access_mode access_mode;
     const char *filename;
     size_t align;
@@ -50,6 +51,7 @@ enum option_type {
     OPT_FILE,
     OPT_ALIGN,
     OPT_SYNC,
+    OPT_DIRECT,
 };
 
 struct context {
@@ -106,6 +108,11 @@ void setup(struct context *ctx, struct options *opts)
     if (opts->sync) {
         oflag |= O_SYNC;
     }
+#ifdef __linux__
+    if (opts->direct) {
+        oflag |= O_DIRECT;
+    }
+#endif /* #ifdef __linux__ */
     ctx->fd = open(opts->filename, oflag, 0600);
     if (ctx->fd == -1) {
         fprintf(stderr, "open file %s failed (err=%s)\n",
@@ -246,6 +253,7 @@ int main(int argc, char *argv[])
     options.sync = false;
     options.filename = strdup("diskperf.data");
     options.align = 1;
+    options.direct = false;
 
     static struct option longopts[] = {
         {"op-size", required_argument, NULL, OPT_OP_SIZE},
@@ -256,6 +264,7 @@ int main(int argc, char *argv[])
         {"file", required_argument, NULL, OPT_FILE},
         {"align", required_argument, NULL, OPT_ALIGN},
         {"sync", no_argument, NULL, OPT_SYNC},
+        {"direct", no_argument, NULL, OPT_DIRECT},
     };
 
     int ch = 0;
@@ -299,6 +308,9 @@ int main(int argc, char *argv[])
         case OPT_SYNC:
             options.sync = true;
             break;
+        case OPT_DIRECT:
+            options.direct = true;
+            break;
         case '?':
             exit(1);
         default:
@@ -313,6 +325,14 @@ int main(int argc, char *argv[])
         fprintf(stderr, "error: invalid argument to --op-size (%zu)\n", options.op_size);
         return 1;
     }
+
+    /* Only linux supports O_DIRECT */
+#ifndef __linux__
+    if (options.direct) {
+        fprintf(stderr, "error: current platform does not support O_DIRECT\n");
+        return 1;
+    }
+#endif /* #ifndef __linux__ */
 
     /* Run benchmark */
     run_benchmark(&options);
