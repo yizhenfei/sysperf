@@ -6,8 +6,10 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <fcntl.h>
+#ifdef __linux__
 #include <unistd.h>
 #include <time.h>
+#endif /* #ifdef __linux__ */
 #include <sys/time.h>
 #include <sys/stat.h>
 
@@ -33,6 +35,7 @@ struct options {
     size_t op_num;
     enum op_type op_type;
     bool fsync;
+    bool sync;
     enum access_mode access_mode;
     const char *filename;
     size_t align;
@@ -46,6 +49,7 @@ enum option_type {
     OPT_FSYNC,
     OPT_FILE,
     OPT_ALIGN,
+    OPT_SYNC,
 };
 
 struct context {
@@ -98,6 +102,9 @@ void setup(struct context *ctx, struct options *opts)
     int oflag = O_CREAT | O_RDWR;
     if (opts->op_type == OP_WRITE && opts->access_mode == ACCESS_SEQ) {
         oflag |= (O_APPEND | O_TRUNC);
+    }
+    if (opts->sync) {
+        oflag |= O_SYNC;
     }
     ctx->fd = open(opts->filename, oflag, 0600);
     if (ctx->fd == -1) {
@@ -236,6 +243,7 @@ int main(int argc, char *argv[])
     options.op_type = OP_READ;
     options.access_mode = ACCESS_SEQ;
     options.fsync = false;
+    options.sync = false;
     options.filename = strdup("diskperf.data");
     options.align = 1;
 
@@ -247,6 +255,7 @@ int main(int argc, char *argv[])
         {"fsync", no_argument, NULL, OPT_FSYNC},
         {"file", required_argument, NULL, OPT_FILE},
         {"align", required_argument, NULL, OPT_ALIGN},
+        {"sync", no_argument, NULL, OPT_SYNC},
     };
 
     int ch = 0;
@@ -286,6 +295,9 @@ int main(int argc, char *argv[])
             break;
         case OPT_FSYNC:
             options.fsync = true;
+            break;
+        case OPT_SYNC:
+            options.sync = true;
             break;
         case '?':
             exit(1);
