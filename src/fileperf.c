@@ -293,8 +293,10 @@ int main(int argc, char *argv[])
         case OPT_FSYNC_EACH:
             options.fsync_mode = FSYNC_EACH;
             break;
+        case '?':
+            exit(1);
         default:
-            /* TODO(Yi Zhenfei): more serious error handling */
+            fprintf(stderr, "getopt_long() returns %d\n", ch);
             continue;
         }
     }

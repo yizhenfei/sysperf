@@ -1,1 +1,2 @@
-- Error handling with unrecognized options.
+- [X] Error handling with unrecognized options.
+- [ ] Improve the distribution of random access.
