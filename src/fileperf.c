@@ -1,3 +1,4 @@
+#define _GNU_SOURCE // Temporary fix for use O_DIRECT
 #include <stdint.h>
 #include <getopt.h>
 #include <string.h>
