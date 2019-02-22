@@ -1,6 +1,13 @@
 - [X] Error handling with unrecognized options.
 - [X] Rename option --fsync-each to --fsync
-- [ ] Support O_SYNC in fileperf
-- [ ] Support O_DIRECT in fileperf
+- [X] Support O_SYNC in fileperf
+- [X] Support O_DIRECT in fileperf
+- [ ] Get and print logical block size and physical sector size.
+- [ ] Support default value(0) for alignment.
+- [ ] Ensure data buffer is properly aligned with logical block size.
+- [ ] Ensure op-size is multiple of logical block size when O_DIRECT is used.
+- [ ] Ensure aligment is multiple of logical block size when O_DIRECT is used.
+- [ ] Rename align in options to alignment.
+- [ ] Remove the temporary fix for using O_DIRECT.
 - [ ] Improve the distribution of random access.
 - [ ] Initial version of diskperf
