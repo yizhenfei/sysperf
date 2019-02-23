@@ -54,3 +54,8 @@ void sp_errno(const char *format, ...)
     fprintf(stderr, "error: %s\n", strerror(err));
 	exit(1);    
 }
+
+bool sp_bind_cpu(unsigned cpu_id)
+{
+    cpu_set_t cpu_set;
+}
