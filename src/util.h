@@ -4,6 +4,10 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#ifdef __cplusplus__
+extern "C" {
+#endif /* #ifdef __cplusplus__ */
+
 /* Print debug message. */
 void sp_debug(const char *format, ...);
 /* Toggle debug message. */
@@ -30,5 +34,9 @@ size_t sp_parse_size(const char *str);
  */
 struct timeval;
 unsigned long sp_usec_diff(struct timeval *begin, struct timeval *end);
+
+#ifdef __cplusplus__
+}
+#endif /* #ifdef __cplusplus__ */
 
 #endif /* #ifndef SYSP_UTIL_H */
