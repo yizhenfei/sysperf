@@ -32,7 +32,7 @@ void sp_info(const char *format, ...)
 	va_start(argp, format);
 	vfprintf(stdout, format, argp);
 	va_end(argp);
-	fputc('\n', stderr);
+	fputc('\n', stdout);
 }
 
 void sp_error(const char *format, ...)
