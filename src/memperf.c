@@ -143,8 +143,8 @@ void echo(options *opts)
 void report(int round_num, context *ctx, options *opts)
 {
     unsigned long us = sp_usec_diff(&ctx->begin, &ctx->end);
-    unsigned long long ops = (unsigned long long)opts->op_num * 1000000 / us;
-    unsigned long long bps = (unsigned long long)opts->op_num * sizeof(void *) * 1000000 / us;
+    unsigned long long ops = us == 0 ? 0 : (unsigned long long)opts->op_num * 1000000 / us;
+    unsigned long long bps = us == 0 ? 0 : (unsigned long long)opts->op_num * sizeof(void *) * 1000000 / us;
     sp_info("round(%d) time: %luus ops: %llu bps: %llu", round_num, us, ops, bps);
 }     
 
