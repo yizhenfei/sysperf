@@ -80,7 +80,7 @@ void do_touch(context *ctx, options *opts)
 {
     char *elem = ctx->mem;
     size_t stride = opts->stride;
-    char *end = elem + opts->op_num;
+    char *end = elem + opts->op_num * opts->stride;
 
     /* TODO(Yi Zhenfei): check for overrun */
     while (elem != end) {
