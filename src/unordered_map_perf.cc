@@ -37,7 +37,7 @@ void do_creation(int_map &map, int size)
 void setup_context(context &ctx, options &opts)
 {
     for (int i = 0; i < opts.round; ++i) {
-        ctx.maps.push_back(std::make_unique<int_map>());
+        ctx.maps.push_back(std::unique_ptr<int_map>(new int_map()));
     }
 }
 
